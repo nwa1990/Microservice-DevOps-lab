@@ -22,7 +22,7 @@ def readyz():
     return {'status':'ready'}
 
 @app.post('/charge')
-def charge(req:ChargeRequest, idempotency_key: Optional[str]=Header(default=None, convert_underscores=False)):
+def charge(req:ChargeRequest, idempotency_key: Optional[str]=Header(default=None)):
     if not idempotency_key:
         raise HTTPException(status_code=400, detail='Missing Idempotency-Key header')
     key=hashlib.sha256(idempotency_key.encode()).hexdigest()

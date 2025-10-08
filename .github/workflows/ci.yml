@@ -1,12 +1,104 @@
 name: ci
-on: {push: {branches: ["master"], tags:["v*"]}, pull_request: {}}
+
+on:
+  push:
+    branches: ["main", "master"]
+    tags: ["v*"]
+  pull_request:
+
 jobs:
-  test:
+  build-test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - run: pip install -r app/requirements.txt pytest
-      - run: pytest -q
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r app/requirements.txt
+          pip install pytest
+
+      - name: Run unit tests
+        run: pytest -q
+  # -------------------------------------------------------------
+  terraform:
+    name: Terraform Plan & Apply
+    runs-on: ubuntu-latest
+    needs: build-test
+    env:
+      AWS_REGION: us-east-1
+    permissions:
+      contents: read
+      id-token: write  # for AWS OIDC auth if using IAM Role
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.4
+
+      - name: Terraform Init
+        run: terraform -chdir=terraform init
+
+      - name: Terraform Validate
+        run: terraform -chdir=terraform validate
+
+      - name: Terraform Plan
+        run: terraform -chdir=terraform plan -var="region=us-east-1"
+
+      # Uncomment the next two lines only if you want CI to auto-deploy
+      # - name: Terraform Apply
+      #   run: terraform -chdir=terraform apply -auto-approve -var="region=us-east-1"
+  # -------------------------------------------------------------
+  docker-build:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: terraform
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}/payments-api:${{ github.sha }} .
+          docker push ghcr.io/${{ github.repository }}/payments-api:${{ github.sha }}
+  # -------------------------------------------------------------
+  helm-deploy:
+    name: Helm Deploy to EKS
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region us-east-1 --name payments-k8s
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install payments-api ./charts/payments-api \
+            --namespace payments --create-namespace \
+            --set image.repository=ghcr.io/${{ github.repository }}/payments-api \
+            --set image.tag=${{ github.sha }} \
+            --wait

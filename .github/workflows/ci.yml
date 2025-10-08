@@ -1,5 +1,5 @@
 name: ci
-on: {push: {branches: ["main"], tags:["v*"]}, pull_request: {}}
+on: {push: {branches: ["master"], tags:["v*"]}, pull_request: {}}
 jobs:
   test:
     runs-on: ubuntu-latest

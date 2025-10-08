@@ -24,6 +24,9 @@ jobs:
           pip install -r app/requirements.txt
           pip install pytest httpx
 
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
       - name: Run unit tests
         run: pytest -q
 

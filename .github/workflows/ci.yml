@@ -19,14 +19,14 @@ jobs:
         with:
           python-version: "3.11"
 
-      -name: Install dependencies
-  run: |
-    pip install -r app/requirements.txt pytest httpx
-          
+      - name: Install dependencies
+        run: |
+          pip install -r app/requirements.txt
+          pip install pytest httpx
 
       - name: Run unit tests
         run: pytest -q
-  # -------------------------------------------------------------
+
   terraform:
     name: Terraform Plan & Apply
     runs-on: ubuntu-latest
